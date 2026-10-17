@@ -1,41 +1,29 @@
 # DoorRelay
 
-## Elevator pitch
-Accessible doorbell alerts that help households know someone is there—and who is answering.
+**Tagline:** A visible alert. A clear handoff. Someone on their way.
 
 ## Inspiration
-A doorbell sound does not reach everyone. For a Deaf or hard-of-hearing resident, and for households that share caregiving responsibilities, seeing activity is only part of the problem. Someone also needs to acknowledge it and make clear who is responding. DoorRelay explores that shared response.
+A door alert tells a household that something happened, but it does not tell everyone who will respond. DoorRelay explores a simple resident-to-helper handoff, particularly for people who may need assistance getting to the door.
 
 ## What it does
-DoorRelay combines a Ring camera view with visible activity cards and a resident/helper dashboard. A resident can say “I’ll answer” or request a household helper. The helper accepts the handoff in their open dashboard, and both views show the response. If no helper accepts within 45 seconds, the visit is marked “needs attention.” Completed visits remain in the history across restarts on the same server disk.
+DoorRelay combines Ring simulator video with a shared visit-response workflow. A resident can answer, request a helper, or mark a visit handled. A helper can accept the request, and both views show the response. Unaccepted requests become “needs attention” after 45 seconds, on the next server read.
 
 ## How we built it
-The prototype extends Amazon's Ring API Hello World starter with Next.js, React and TypeScript. Ring API device discovery and WebRTC/WHEP video streaming run through backend routes so credentials stay on the server. The webhook receiver verifies Ring's raw-body HMAC-SHA256 signature, validates the payload and rejects retained duplicates before distributing events over Server-Sent Events. A shared response API coordinates the handoff; responses poll every two seconds. Bounded JSON storage persists up to 200 events and their response status on a single Node server.
+The project builds on Amazon's MIT-licensed Ring hello-world sample. Server routes call Ring device discovery and WHEP session APIs; the browser plays video through WebRTC. React and TypeScript provide the interface. The hosted edition uses Vinext on Cloudflare Workers and D1 for durable visit history and responses. Optimistic revision checks reject competing updates. Ring tokens are validated before encrypted server-side storage.
 
-The local demo controls are explicitly labeled and kept distinct from signed webhook arrivals. They allow the household workflow to be tested independently of Ring account setup.
+The webhook receiver validates HMAC-SHA256 signatures and deduplicates events. The private hosted deployment does not receive external Ring webhooks. Demonstration visits are clearly labeled local demo events, separate from Ring simulator footage. Video playback does not imply Ring notification delivery.
 
 ## Challenges
-A working Ring video session did not mean event delivery was configured. The starter's access-token view hid its event panel, and its events endpoint read a local webhook store rather than polling Ring. We exposed those differences in the interface and documentation. Short-lived Playground tokens also interrupted camera discovery during longer build sessions. The app now keeps household controls available when the camera needs a fresh token.
+We resolved expired-token errors with a reconnect form, migrated process-local history to durable storage, and added conflict handling so two helpers cannot silently overwrite each other's response. We separated preview events, local demo events and Ring video to make the demonstration honest and understandable.
 
 ## Accomplishments
-We built and production-compiled the prototype, verified response transitions and duplicate handling, and tested a resident/helper handoff in two independent browser sessions. The helper's acceptance and resolution appeared in the resident's view, and reloading retained the response. The mobile layout was checked at a 390px viewport.
+Hosted Ring simulator playback is working and was confirmed by the owner. The prototype includes durable coordination state, helper acceptance, timeout status and explicit event provenance. TypeScript and production builds pass. A verification script exercises storage, competing acceptance, encryption, disconnect, cross-site checks and signed webhook fixtures.
 
 ## What we learned
-Integrations need separate evidence for authentication, video playback, incoming events and shared state. Clear test-data labels make a prototype easier to evaluate honestly.
+Creating a stream session, displaying video, and receiving webhook notifications are different milestones. Clear status and a named responder are as important to a handoff as the initial alert.
 
 ## What's next
-Validate the interaction with Deaf and hard-of-hearing residents, add individual household membership, move storage to a database for multiple server instances, and add opt-in background notifications. Ring partner webhook delivery must be verified in the target account before claiming automatic device-to-helper alerts.
+Separate authenticated household accounts, a publicly reachable authenticated Ring webhook receiver, opt-in background notifications, and usability testing with residents and helpers.
 
-## Submission fields
-- Primary track: Ring
-- AWS Builder mini challenge: Not entered in this build; no AWS integration claimed.
-- Open Source mini challenge: Not claimed without an additional qualifying contribution and its URL.
-- Built with: Next.js, React, TypeScript, Node.js, Ring Partner API, WebRTC/WHEP, Server-Sent Events, Tailwind CSS, Zod.
-- Source attribution: https://github.com/AmazonAppDev/ring-api-helloworld (MIT).
-- New work: DoorRelay dashboard, shared household responses, help timeout, persistence, signed webhook handling, access protection and documentation built during the hackathon.
-
-## Finish before posting
-1. Replace this checklist with the actual GitHub repository URL and public English YouTube/Vimeo demo URL.
-2. Record the submitted build showing actual Ring Playground playback (or a Ring device) and the shared workflow. Say explicitly when a visit is locally generated.
-3. Do not describe partner webhook delivery as verified unless the target Ring account has actually delivered an event to this receiver.
-4. Attach product feedback. If using a private repo, add testing@devpost.com and the named Amazon reviewers from the rules at submission time.
+## Scope and access
+Primary track: Ring. No mini challenge claimed. New DoorRelay functionality was built during the hackathon using the existing Amazon sample as a foundation. The site is owner-private; the repository and video are the reviewer deliverables. This is a prototype, not an emergency-response or access-control service. Role selection demonstrates behavior and is not account authentication.
