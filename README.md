@@ -1,63 +1,65 @@
 # DoorRelay
 
-**Accessible doorbell activity and shared household responses.** Built by Chinaza Okereke for the Amazon Developer Hackathon, Ring track.
+A visible alert. A clear handoff. Someone on their way.
 
-DoorRelay gives a resident and an invited household helper a shared view of who is answering the door. It combines Ring camera streaming, signed webhook ingestion, prominent text alerts, a timed help request, and a visit history. A helper accepts a handoff in their open dashboard. Unanswered help requests become “needs attention” after 45 seconds.
+DoorRelay is a Ring-track hackathon prototype for a household resident and helper to see door activity, request assistance, accept a handoff, and mark a visit handled. This hosted edition runs React on Vinext/Cloudflare Workers with a D1 database. It builds on Amazon's MIT-licensed Ring hello-world integration.
 
-## Run on your Mac
+## Latest submission source
 
-Use Node.js 20 or later (tested here with Node 24) and npm.
+The exact hosted edition is in **doorrelay-hosted-source.zip** (source commit `0dcad001fc89415fa8745573729bf9b40f029328`). Extract it and run the commands below inside `doorrelay-hosted/`. It includes source, assets, migrations, lockfile, license, verification script and local-development instructions. The files at this repository root are the earlier standalone Next.js edition; use the archive for the current deployment. Runtime secrets and database content are excluded.
 
-```bash
-npm ci
-cp -n .env.example .env.local
-npm run dev
+## Open the hosted app
+
+https://doorrelay.almond-mole-5052.chatgpt.site
+
+This deployment is owner-private and requires the owner's ChatGPT sign-in. Do not change the audience to anonymous/public without implementing household authorization. Role selection demonstrates the workflow; it is not an identity or access-control system. Two tabs signed in as the owner share the same household.
+
+1. Expand **Connect or reconnect Ring** in the camera card.
+2. Generate an access token in [Ring Playground](https://developer.amazon.com/ring/console/playground) and paste it into the password field. Do not share it in chat or source code.
+3. Click **Connect Ring**. The server validates device access before saving the token encrypted with AES-256-GCM. Click **Start camera view**.
+4. For the coordination demo, open the app in two tabs, use Resident in one and Helper in the other. Open Demo controls and create a demo test visit. Request helper, accept in the helper tab, then mark handled.
+
+Demo events are explicitly labeled and do not originate from Ring. Ring simulator video and local demo events are separate integrations. A successful video stream does not establish webhook delivery.
+
+## What is implemented
+
+- Real server-side calls to Ring `/v1/devices` and WHEP stream session endpoints; WebRTC playback in the browser.
+- Durable D1 history capped at 200 visits and associated responses; updates polled every two seconds.
+- Resident/helper handoff and 45-second unaccepted-request status. Status advances on the next server read; no background notifications.
+- Optimistic database revision checks reject competing responses rather than silently overwrite them.
+- Ring-token validation, encrypted server-side storage, replacement and deletion. No token-read API.
+- Signed Ring webhook validation with HMAC-SHA256 and request/event deduplication.
+- Responsive UI, keyboard-operable controls and live status announcements.
+
+## Runtime configuration
+
+The Sites manifest declares D1 binding `DB`. Runtime secrets must be configured outside source:
+
+- `DOORRELAY_VAULT_KEY`: 64 lowercase hex characters, generated securely once; encrypts stored Ring tokens. Replacing this key requires reconnecting Ring.
+- `DOORRELAY_ENABLE_TEST_EVENTS=true`: enables labeled demo controls. Set false for regular use.
+- `RING_HMAC_SIGNING_KEY`: optional partner key for real webhook verification.
+
+The private Sites access gate blocks unsolicited external webhook requests. Partner webhooks require an approved publicly reachable, HMAC-protected receiver and Ring partner configuration; that external delivery is not enabled or claimed for this private deployment. The route and validation are included for that integration work.
+
+## Build and verification
+
+Node 24 is recommended. This repository uses pnpm with `pnpm-lock.yaml`.
+
+```sh
+corepack pnpm install --frozen-lockfile
+corepack pnpm exec tsc --noEmit
+node scripts/verify-store.mjs
+corepack pnpm run build
 ```
 
-Open http://localhost:3000 in Chrome. The dashboard works without Ring credentials for **clearly labeled local tests**. Open Demo controls, then Create local test visit. Open a second tab, choose Helper, enter a different name, and accept a Resident's Request helper action.
+The verification script executes the real storage, response, token, and webhook functions against an in-memory SQLite D1-compatible adapter. It tests concurrent helper acceptance, timeouts, retention, encryption, disconnect, cross-site rejection, test labeling and signed webhook fixtures. It does not prove live Ring access or browser media playback. Sites applies the committed schema migrations when deploying.
 
-For camera video, generate a fresh token at https://developer.amazon.com/ring/console/playground, put it after `RING_ACCESS_TOKEN=` in `.env.local`, save, restart the server, and select Start camera view. Do not commit the token. The video is simulator footage with a Playground token. Camera configuration failures do not block the local household workflow.
+For local development, use the portable Sites execution profile and local D1 migrations described in `docs/LOCAL-DEVELOPMENT.md`. Never commit runtime tokens or database content.
 
-## Verify
+## Limits
 
-```bash
-npm run build
-node scripts/verify.mjs
-```
+One private household per deployment. Resident/helper are demonstration roles, not separate authenticated accounts. No phone/background notifications, emergency dispatch, identity recognition, or door-unlock control. Ring Playground tokens can expire and require reconnecting. The owner confirmed hosted Ring simulator playback on October 17, 2026. Recheck playback before recording because Playground tokens can expire.
 
-Run the verification script with the dev server already running and Demo controls enabled. The script creates **local test data**. If the server uses a household password, also set `DOORRELAY_APP_PASSWORD` for the script process. Optional HMAC verification fixtures require the same `RING_HMAC_SIGNING_KEY` in the script and server; these are protocol tests, not Ring-originated events.
+## Attribution
 
-## Signed Ring webhooks
-
-1. Register/configure a partner application in the Ring developer portal and obtain its HMAC signing key and account-linking credentials.
-2. Set `RING_HMAC_SIGNING_KEY` to the issued key. It differs from a Playground access token.
-3. Configure a public **HTTPS** webhook URL ending in `/api/webhook` through Ring partner setup.
-4. Link the appropriate Ring/sandbox account, then trigger a supported event. The route verifies the HMAC-SHA256 `X-Signature` against the **raw request body**, validates the envelope, normalizes the event, persists it, and pushes it to open dashboards.
-5. Duplicate event or request IDs already retained are ignored. Invalid signatures return 401. Missing key returns 503. A genuine signed arrival shows “SIGNED RING WEBHOOK.”
-
-A Playground video session alone does not deliver a webhook to this local server. Configuring the receiver and partner account is a separate task. End-to-end Ring notification delivery has not yet been verified for this submission build.
-
-Official references: https://developer.amazon.com/docs/ring/api-documentation.html and https://developer.amazon.com/docs/ring/configure.html.
-
-## Shared responses and storage
-
-Visit and response data are saved atomically in `.doorrelay/visits.json` by default. Set `DOORRELAY_DATA_DIR` to use a different persistent directory. Up to 200 events are retained. The two dashboards should use the **same running Node server**. Responses poll every two seconds; events use SSE with a local-store polling fallback. State survives server restarts on the same disk. Use one Node process. A database is required for multiple application instances or serverless hosting.
-
-Name/role selection identifies participants for this household prototype. It is not individual account authentication. Shared access can be protected with `DOORRELAY_APP_PASSWORD`: browser username `household`, password from that environment variable. Production and non-loopback access require this password. Use HTTPS if sharing over the internet. Ring POST webhooks use signature verification rather than the household password.
-
-Local test event creation is enabled in development and disabled in production unless `DOORRELAY_ENABLE_TEST_EVENTS=true`. If enabled for a production demo, it is behind the household password and remains labeled as test data.
-
-## Scope
-
-- No lock control, facial recognition, identity verification, or emergency monitoring.
-- Helpers receive updates in an **open dashboard**. No email, SMS, phone push, or background notification is sent.
-- The timeout changes the visit status; it does not contact an additional person.
-- The app does not determine that it is safe to open a door.
-- Webhook signature tests and local test visits do not establish that an event came from a real Ring device.
-- Accessibility features include readable text, large controls, keyboard focus, live status text and responsive layout. Testing with Deaf/hard-of-hearing users is future work; no user study is claimed.
-
-## Provenance and license
-
-Based on Amazon's MIT-licensed starter: https://github.com/AmazonAppDev/ring-api-helloworld. Ring authentication and WebRTC/WHEP streaming hooks originated there. DoorRelay adds the household workflow, shared responses, persistence, signed ingestion, prototype access protection and submission documentation. The original MIT license is included in LICENSE. All source needed to build is included; do not include `.env.local`, `.doorrelay`, `.next`, or `node_modules` in the repository.
-
-Submission text, observed friction and the under-three-minute recording outline are in `submission/`.
+Ring API and WebRTC implementation adapted from https://github.com/AmazonAppDev/ring-api-helloworld. Original MIT license retained in LICENSE. DoorRelay-specific additions include coordination, persistence, secure token setup, and accessibility-focused presentation.
